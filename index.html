@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html ng-app="myApp">
+<head>
+<link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/css/bootstrap.css">
+<link rel="stylesheet" type="text/css" href="assets/css/animation.css">
+<link rel="stylesheet" type="text/css" href="node_modules/ng-notifications-bar/css/ngNotificationsBar.css">
+
+	<title></title>
+	<script src="bower_components/jquery/dist/jquery.js"></script>
+	<script src="bower_components/bootstrap/dist/js/bootstrap.js"></script>
+
+</head>
+<body style="padding-top: 50px;" ng-controller="AppCtrl as vm">
+
+		<notifications-bar class="notifications"></notifications-bar>
+
+		<!-- Fixed navbar -->
+	   	<nav class="navbar navbar-default navbar-fixed-top">
+	     	<div class="container">
+		       	<div class="navbar-header">
+		         	<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+			           	<span class="sr-only">Toggle navigation</span>
+			           	<span class="icon-bar"></span>
+			           	<span class="icon-bar"></span>
+			           	<span class="icon-bar"></span>
+		         	</button>
+		         	<a class="navbar-brand" href="#">Project name</a>
+		       	</div>
+
+		       	<div id="navbar" class="navbar-collapse collapse">
+					
+					<ul class="nav navbar-nav navbar-right">
+						<li ng-if="!vm.user.username"><a ui-sref="login">Login</a></li>
+						<li ng-if="!vm.user.username"><a ui-sref="register">Register</a></li>
+						<li ng-if="vm.user.username">{{ vm.user.username }}</li>
+						<li ng-if="vm.user.username"><a href="" ng-click="vm.logout()">Logout</a></li>
+					</ul>
+		       	</div><!--/.nav-collapse -->
+	     
+	     	</div>
+	   	</nav>
+
+		<div class="container">
+			<ui-view class="slide"></ui-view>
+		</div>
+
+<script src="app/bundle.js"></script>
+</body>
+</html>
