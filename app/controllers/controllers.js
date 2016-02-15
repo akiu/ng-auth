@@ -4,60 +4,64 @@
 
 	var app = angular.module("myApp.controller", []);
 
-	app.controller("AppCtrl", ['AuthFactory', '$rootScope', 'AUTH_EVENTS', '$scope', 'SessionService', 'notifications', '$state', '$scope',
-		function(AuthFactory, $rootScope, AUTH_EVENTS, $scope, SessionService, notifications, $state, $scope) {
+	app.controller("AppCtrl", ['AuthFactory', '$rootScope', 'AUTH_EVENTS', '$scope', 'SessionService', 'toastr', '$state', 'USER_ROLES',
+		function(AuthFactory, $rootScope, AUTH_EVENTS, $scope, SessionService, toastr, $state, USER_ROLES) {
 
-		var vm = this;
+		$scope.userName = null;
+		$scope.userRoles =  USER_ROLES.guest;
 
-		$scope.currentUser = null;
+		$scope.isAuthorized = AuthFactory.isAuthenticated();
 
-		vm.user = {};
-
-		
-		vm.user.username = null;
-		vm.user.roles = [];
-
-		vm.isAuthorized = AuthFactory.isAuthenticated();
-
-		vm.setCurrentUser = function (username, roles) {
+		$scope.setCurrentUser = function () {
     		
-    		//menampilkan username di menu
-    		vm.user.username = username;
+    		var userName = SessionService.user().userName;
+    		var userRoles = SessionService.user().roles;
+			
+			if(userName && userRoles) {
 
-    		//menampilkan menu sesuai roles
-    		vm.user.roles = roles;
+				$scope.userName = userName;
+				$scope.userRoles = userRoles;
+			} 
+		};
 
-    		$scope.currentUser = username;
-  		};
+  		$scope.removeCurrentUser = function() {
+
+  			$scope.userName = null;
+  			$scope.userRoles = USER_ROLES.guest;
+  		}
 		
+		$scope.setCurrentUser();
+
 		$scope.$on(AUTH_EVENTS.loginSuccess, function(event, args) {
 			
-			notifications.showSuccess('Login Success');
-			vm.setCurrentUser(args.username, args.roles)
+			toastr.success("Login Succeed");
+
+			$scope.setCurrentUser();
 		});
 
 		$scope.$on(AUTH_EVENTS.notAuthorized, function(event, args) {
 
-			notifications.showError('You are not authorized');
+			toastr.error('You are not authorized');
 		});
 
 		$scope.$on(AUTH_EVENTS.notAuthenticated, function(event, args) {
 
-			notifications.showError('Please Login first');
+			toastr.warning('Please Login first');
 		});
 
-		vm.logout = function() {
+		$scope.$on(AUTH_EVENTS.loginFailed, function(event, args) {
+
+			toastr.warning("Login failed");
+		});
+
+		$scope.logout = function() {
 
 			SessionService.logout();
-
-			vm.user.username = null;
-			vm.user.token = [];
-
-			$scope.currentUser = null;
+			$scope.removeCurrentUser();
 
 			$state.go('login');
 
-			notifications.showError("You Are Logged Out");
+			toastr.warning("You are logged out");
 		}
 
 		return this;
@@ -76,9 +80,9 @@
 
 				data = response.data;
 
-				SessionService.create(data.id, data.token, data.roles);
+				SessionService.create(data.id, data.username, data.token, data.roles);
 
-				$rootScope.$broadcast(AUTH_EVENTS.loginSuccess, { username: data.username, roles: data.roles});
+				$rootScope.$broadcast(AUTH_EVENTS.loginSuccess);
 
 				$state.go('home');
 

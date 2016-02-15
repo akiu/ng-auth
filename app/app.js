@@ -3,7 +3,8 @@ var angular = require("angular");
 //third library
 var angularAnimate = require("angular-animate");
 var anglarSanitize = require("angular-sanitize");
-var notification = require("ng-notifications-bar");
+var localStorage = require("angular-local-storage");
+var angularToatr = require("angular-toastr");
 
 //local depencency
 var directives = require("./directives/directives");
@@ -21,8 +22,13 @@ var app = angular.module("myApp",
 		'ngAnimate',  
 		
 		//notification
-		'ngNotificationsBar', 
-		'ngSanitize'
+		'ngSanitize',
+
+		//local storage
+		'LocalStorageModule',
+
+		//toastr
+		'toastr'
 	]);
 
 app.config(function($httpProvider) {
@@ -35,6 +41,8 @@ app.config(function($httpProvider) {
 
 app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 
+	$rootScope.$broadcast('page_refresh');
+	
 	$rootScope.$on("$stateChangeStart", function(event, next) {
 		
 		var authorizedRoles = next.data.authorizedRoles;
@@ -53,5 +61,5 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 	        	$rootScope.$broadcast(AUTH_EVENTS.notAuthenticated);
 	      	}
 		}
-	})
+	});
 });

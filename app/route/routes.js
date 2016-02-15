@@ -38,11 +38,6 @@
 				controllerAs: "vm",
 				data: {
 					authorizedRoles: [USER_ROLES.admin]
-				},
-				resolve: {
-					auth: function resolveAuthentication(AuthResolver) {
-						return AuthResolver.resolve();
-					}
 				}
 			});
 	});

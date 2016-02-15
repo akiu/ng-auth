@@ -4,7 +4,8 @@ var angular = require("angular");
 //third library
 var angularAnimate = require("angular-animate");
 var anglarSanitize = require("angular-sanitize");
-var notification = require("ng-notifications-bar");
+var localStorage = require("angular-local-storage");
+var angularToatr = require("angular-toastr");
 
 //local depencency
 var directives = require("./directives/directives");
@@ -22,8 +23,13 @@ var app = angular.module("myApp",
 		'ngAnimate',  
 		
 		//notification
-		'ngNotificationsBar', 
-		'ngSanitize'
+		'ngSanitize',
+
+		//local storage
+		'LocalStorageModule',
+
+		//toastr
+		'toastr'
 	]);
 
 app.config(function($httpProvider) {
@@ -36,6 +42,8 @@ app.config(function($httpProvider) {
 
 app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 
+	$rootScope.$broadcast('page_refresh');
+	
 	$rootScope.$on("$stateChangeStart", function(event, next) {
 		
 		var authorizedRoles = next.data.authorizedRoles;
@@ -54,69 +62,73 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 	        	$rootScope.$broadcast(AUTH_EVENTS.notAuthenticated);
 	      	}
 		}
-	})
+	});
 });
-},{"./controllers/controllers":2,"./directives/directives":3,"./route/routes":4,"./services/services":5,"angular":12,"angular-animate":7,"angular-sanitize":9,"ng-notifications-bar":13}],2:[function(require,module,exports){
+},{"./controllers/controllers":2,"./directives/directives":3,"./route/routes":4,"./services/services":5,"angular":15,"angular-animate":7,"angular-local-storage":8,"angular-sanitize":10,"angular-toastr":12}],2:[function(require,module,exports){
 (function() {
 
 	var angular = require("angular");
 
 	var app = angular.module("myApp.controller", []);
 
-	app.controller("AppCtrl", ['AuthFactory', '$rootScope', 'AUTH_EVENTS', '$scope', 'SessionService', 'notifications', '$state', '$scope',
-		function(AuthFactory, $rootScope, AUTH_EVENTS, $scope, SessionService, notifications, $state, $scope) {
+	app.controller("AppCtrl", ['AuthFactory', '$rootScope', 'AUTH_EVENTS', '$scope', 'SessionService', 'toastr', '$state', 'USER_ROLES',
+		function(AuthFactory, $rootScope, AUTH_EVENTS, $scope, SessionService, toastr, $state, USER_ROLES) {
 
-		var vm = this;
+		$scope.userName = null;
+		$scope.userRoles =  USER_ROLES.guest;
 
-		$scope.currentUser = null;
+		$scope.isAuthorized = AuthFactory.isAuthenticated();
 
-		vm.user = {};
-
-		
-		vm.user.username = null;
-		vm.user.roles = [];
-
-		vm.isAuthorized = AuthFactory.isAuthenticated();
-
-		vm.setCurrentUser = function (username, roles) {
+		$scope.setCurrentUser = function () {
     		
-    		//menampilkan username di menu
-    		vm.user.username = username;
+    		var userName = SessionService.user().userName;
+    		var userRoles = SessionService.user().roles;
+			
+			if(userName && userRoles) {
 
-    		//menampilkan menu sesuai roles
-    		vm.user.roles = roles;
+				$scope.userName = userName;
+				$scope.userRoles = userRoles;
+			} 
+		};
 
-    		$scope.currentUser = username;
-  		};
+  		$scope.removeCurrentUser = function() {
+
+  			$scope.userName = null;
+  			$scope.userRoles = USER_ROLES.guest;
+  		}
 		
+		$scope.setCurrentUser();
+
 		$scope.$on(AUTH_EVENTS.loginSuccess, function(event, args) {
 			
-			notifications.showSuccess('Login Success');
-			vm.setCurrentUser(args.username, args.roles)
+			toastr.success("Login Succeed");
+
+			$scope.setCurrentUser();
 		});
 
 		$scope.$on(AUTH_EVENTS.notAuthorized, function(event, args) {
 
-			notifications.showError('You are not authorized');
+			toastr.error('You are not authorized');
 		});
 
 		$scope.$on(AUTH_EVENTS.notAuthenticated, function(event, args) {
 
-			notifications.showError('Please Login first');
+			toastr.warning('Please Login first');
 		});
 
-		vm.logout = function() {
+		$scope.$on(AUTH_EVENTS.loginFailed, function(event, args) {
+
+			toastr.warning("Login failed");
+		});
+
+		$scope.logout = function() {
 
 			SessionService.logout();
-
-			vm.user.username = null;
-			vm.user.token = [];
-
-			$scope.currentUser = null;
+			$scope.removeCurrentUser();
 
 			$state.go('login');
 
-			notifications.showError("You Are Logged Out");
+			toastr.warning("You are logged out");
 		}
 
 		return this;
@@ -135,9 +147,9 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 
 				data = response.data;
 
-				SessionService.create(data.id, data.token, data.roles);
+				SessionService.create(data.id, data.username, data.token, data.roles);
 
-				$rootScope.$broadcast(AUTH_EVENTS.loginSuccess, { username: data.username, roles: data.roles});
+				$rootScope.$broadcast(AUTH_EVENTS.loginSuccess);
 
 				$state.go('home');
 
@@ -190,7 +202,7 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 })();
 
 
-},{"angular":12}],3:[function(require,module,exports){
+},{"angular":15}],3:[function(require,module,exports){
 (function(){
 
 	var angular = require("angular");
@@ -233,7 +245,7 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 })();
 
 
-},{"angular":12}],4:[function(require,module,exports){
+},{"angular":15}],4:[function(require,module,exports){
 (function() {
 
 	var angular = require("angular");
@@ -274,11 +286,6 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 				controllerAs: "vm",
 				data: {
 					authorizedRoles: [USER_ROLES.admin]
-				},
-				resolve: {
-					auth: function resolveAuthentication(AuthResolver) {
-						return AuthResolver.resolve();
-					}
 				}
 			});
 	});
@@ -288,13 +295,20 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 })();
 
 
-},{"../services/services":5,"angular":12,"angular-ui-router":10}],5:[function(require,module,exports){
+},{"../services/services":5,"angular":15,"angular-ui-router":13}],5:[function(require,module,exports){
 
 (function() {
 
 	var angular = require("angular");
+	var localStorage = require("angular-local-storage");
 
-	var app = angular.module("myApp.services", []);
+	var app = angular.module("myApp.services", ['LocalStorageModule']);
+
+	app.config(function(localStorageServiceProvider) {
+		
+		localStorageServiceProvider
+			.setPrefix("ngAuth");
+	});
 
 	app.constant('API_URL', 'http://localhost:8000');
 
@@ -315,30 +329,36 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 		  guest: 'guest'
 	});
 
-	app.service("SessionService", ['$q', '$http', 'API_URL', 'USER_ROLES', 
-		function($q, $http, API_URL, USER_ROLES) {
+	app.service("SessionService", ['$q', 'API_URL', 'USER_ROLES', 'localStorageService', 
+		function($q, API_URL, USER_ROLES, localStorageService) {
 
-		this.user = {
+		this.user = function() {
 			
-			id: null,
-			token: null,
-			roles: USER_ROLES.guest
-			
+			var _user = {};
+
+			_user.id = localStorageService.get("id") ? localStorageService.get("id") : null;
+			_user.userName = localStorageService.get("userName") ? localStorageService.get("userName") : null;
+			_user.token = localStorageService.get("token") ? localStorageService.get("token") : null;
+			_user.roles = localStorageService.get("roles") ? localStorageService.get("roles") : USER_ROLES.guest;
+
+			return _user;
 		};
 
-		this.create = function(user_id, token, roles) {
+		this.create = function(user_id, username, token, roles) {
 
-			this.user.id = user_id;
-			this.user.token = token;
-			this.user.roles = roles[0];
-			
+			localStorageService.set("id", user_id);
+			localStorageService.set("userName", username);
+			localStorageService.set("token", token);
+			localStorageService.set("roles", roles[0]);
+
 		};
 
 		this.logout = function() {
 
-			this.user.id = null;
-			this.user.token = null;
-			this.user.roles = USER_ROLES.guest;
+			localStorageService.remove("id");
+			localStorageService.remove("userName");
+			localStorageService.remove("token");
+			localStorageService.remove("roles");
 			
 		};
 
@@ -347,52 +367,54 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 	app.factory('AuthFactory', ['$q', '$http', 'API_URL', 'SessionService', 
 		function($q, $http, API_URL, SessionService) {
 		
-		return {
+		var authService = {};
+
+		authService.login = function(username, password) {
+
+			var request = { 
+				
+				url: API_URL + "/api/login",
+				data: {
+					username: username,
+					password: password,
+				},
+				method: "POST"
+			};
+
+			return $http(request);
+		}
+
+		authService.register = function(username, password) {
+
+			var request = {
+				
+				url: API_URL + "/api/register",
+				data: {
+					username: username,
+					password: password
+				},
+				method: "POST"
+			};
+
+			return $http(request);	
+		}
+
+		authService.isAuthenticated = function() {
+
+			return !!SessionService.user().id;
+		}
+
+		authService.isAuthorized = function(authorizedRoles) {
 			
-			register : function(username, password) {
-				
-				var request = {
-					
-					url: API_URL + "/api/register",
-					data: {
-						username: username,
-						password: password
-					},
-					method: "POST"
-				};
-
-				return $http(request);	
-			},
-
-			login : function(username, password) {
-
-				var request = { 
-					
-					url: API_URL + "/api/login",
-					data: {
-						username: username,
-						password: password,
-					},
-					method: "POST"
-				};
-
-				return $http(request);
-			},
-
-			isAuthenticated : function() {
-				
-				return !!SessionService.user.id;
-			},
-
-			isAuthorized : function(authorizedRoles) {
-				
-				if(!angular.isArray(authorizedRoles)) {
-					authorizedRoles = [authorizedRoles];
-				}
-
-				return (this.isAuthenticated && authorizedRoles.indexOf(SessionService.user.roles) !== -1);
+			if(!angular.isArray(authorizedRoles)) {
+				authorizedRoles = [authorizedRoles];
 			}
-		};
+
+			return (authService.isAuthenticated && authorizedRoles.indexOf(SessionService.user().roles) !== -1);
+			
+		}
+
+		return authService;
 
 	}]);
 
@@ -413,37 +435,11 @@ app.run(function($rootScope, AUTH_EVENTS, AuthFactory) {
 		};
 	}]);
 
-	app.factory('AuthResolver', ['$q', '$rootScope', '$state', 
-		function($q, $rootScope, $state) {
-
-		return {
-
-			resolve: function() {
-
-				var deferred = $q.defer();
-				var unwatch = $rootScope.$watch('currentUser', function(currentUser) {
-					if (angular.isDefined(currentUser)) {
-						if(currentUser) {
-							deferred.resolve(currentUser);
-						} else {
-							deferred.reject();
-							$state.go('login');
-						}
-
-						unwatch();
-					}
-				});
-
-				return deferred.promise;
-			}
-		};
-	}]);
-
 	module.exports = app;
 
 })();
 
-},{"angular":12}],6:[function(require,module,exports){
+},{"angular":15,"angular-local-storage":8}],6:[function(require,module,exports){
 /**
  * @license AngularJS v1.5.0
  * (c) 2010-2016 Google, Inc. http://angularjs.org
@@ -4572,6 +4568,454 @@ module.exports = 'ngAnimate';
 
 },{"./angular-animate":6}],8:[function(require,module,exports){
 /**
+ * An Angular module that gives you access to the browsers local storage
+ * @version v0.2.2 - 2015-05-29
+ * @link https://github.com/grevory/angular-local-storage
+ * @author grevory <greg@gregpike.ca>
+ * @license MIT License, http://www.opensource.org/licenses/MIT
+ */
+(function ( window, angular, undefined ) {
+/*jshint globalstrict:true*/
+'use strict';
+
+var isDefined = angular.isDefined,
+  isUndefined = angular.isUndefined,
+  isNumber = angular.isNumber,
+  isObject = angular.isObject,
+  isArray = angular.isArray,
+  extend = angular.extend,
+  toJson = angular.toJson;
+var angularLocalStorage = angular.module('LocalStorageModule', []);
+
+angularLocalStorage.provider('localStorageService', function() {
+
+  // You should set a prefix to avoid overwriting any local storage variables from the rest of your app
+  // e.g. localStorageServiceProvider.setPrefix('yourAppName');
+  // With provider you can use config as this:
+  // myApp.config(function (localStorageServiceProvider) {
+  //    localStorageServiceProvider.prefix = 'yourAppName';
+  // });
+  this.prefix = 'ls';
+
+  // You could change web storage type localstorage or sessionStorage
+  this.storageType = 'localStorage';
+
+  // Cookie options (usually in case of fallback)
+  // expiry = Number of days before cookies expire // 0 = Does not expire
+  // path = The web path the cookie represents
+  this.cookie = {
+    expiry: 30,
+    path: '/'
+  };
+
+  // Send signals for each of the following actions?
+  this.notify = {
+    setItem: true,
+    removeItem: false
+  };
+
+  // Setter for the prefix
+  this.setPrefix = function(prefix) {
+    this.prefix = prefix;
+    return this;
+  };
+
+   // Setter for the storageType
+   this.setStorageType = function(storageType) {
+     this.storageType = storageType;
+     return this;
+   };
+
+  // Setter for cookie config
+  this.setStorageCookie = function(exp, path) {
+    this.cookie.expiry = exp;
+    this.cookie.path = path;
+    return this;
+  };
+
+  // Setter for cookie domain
+  this.setStorageCookieDomain = function(domain) {
+    this.cookie.domain = domain;
+    return this;
+  };
+
+  // Setter for notification config
+  // itemSet & itemRemove should be booleans
+  this.setNotify = function(itemSet, itemRemove) {
+    this.notify = {
+      setItem: itemSet,
+      removeItem: itemRemove
+    };
+    return this;
+  };
+
+  this.$get = ['$rootScope', '$window', '$document', '$parse', function($rootScope, $window, $document, $parse) {
+    var self = this;
+    var prefix = self.prefix;
+    var cookie = self.cookie;
+    var notify = self.notify;
+    var storageType = self.storageType;
+    var webStorage;
+
+    // When Angular's $document is not available
+    if (!$document) {
+      $document = document;
+    } else if ($document[0]) {
+      $document = $document[0];
+    }
+
+    // If there is a prefix set in the config lets use that with an appended period for readability
+    if (prefix.substr(-1) !== '.') {
+      prefix = !!prefix ? prefix + '.' : '';
+    }
+    var deriveQualifiedKey = function(key) {
+      return prefix + key;
+    };
+    // Checks the browser to see if local storage is supported
+    var browserSupportsLocalStorage = (function () {
+      try {
+        var supported = (storageType in $window && $window[storageType] !== null);
+
+        // When Safari (OS X or iOS) is in private browsing mode, it appears as though localStorage
+        // is available, but trying to call .setItem throws an exception.
+        //
+        // "QUOTA_EXCEEDED_ERR: DOM Exception 22: An attempt was made to add something to storage
+        // that exceeded the quota."
+        var key = deriveQualifiedKey('__' + Math.round(Math.random() * 1e7));
+        if (supported) {
+          webStorage = $window[storageType];
+          webStorage.setItem(key, '');
+          webStorage.removeItem(key);
+        }
+
+        return supported;
+      } catch (e) {
+        storageType = 'cookie';
+        $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+        return false;
+      }
+    }());
+
+    // Directly adds a value to local storage
+    // If local storage is not available in the browser use cookies
+    // Example use: localStorageService.add('library','angular');
+    var addToLocalStorage = function (key, value) {
+      // Let's convert undefined values to null to get the value consistent
+      if (isUndefined(value)) {
+        value = null;
+      } else {
+        value = toJson(value);
+      }
+
+      // If this browser does not support local storage use cookies
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+            $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+
+        if (notify.setItem) {
+          $rootScope.$broadcast('LocalStorageModule.notification.setitem', {key: key, newvalue: value, storageType: 'cookie'});
+        }
+        return addToCookies(key, value);
+      }
+
+      try {
+        if (webStorage) {webStorage.setItem(deriveQualifiedKey(key), value)};
+        if (notify.setItem) {
+          $rootScope.$broadcast('LocalStorageModule.notification.setitem', {key: key, newvalue: value, storageType: self.storageType});
+        }
+      } catch (e) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+        return addToCookies(key, value);
+      }
+      return true;
+    };
+
+    // Directly get a value from local storage
+    // Example use: localStorageService.get('library'); // returns 'angular'
+    var getFromLocalStorage = function (key) {
+
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+          $rootScope.$broadcast('LocalStorageModule.notification.warning','LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+
+        return getFromCookies(key);
+      }
+
+      var item = webStorage ? webStorage.getItem(deriveQualifiedKey(key)) : null;
+      // angular.toJson will convert null to 'null', so a proper conversion is needed
+      // FIXME not a perfect solution, since a valid 'null' string can't be stored
+      if (!item || item === 'null') {
+        return null;
+      }
+
+      try {
+        return JSON.parse(item);
+      } catch (e) {
+        return item;
+      }
+    };
+
+    // Remove an item from local storage
+    // Example use: localStorageService.remove('library'); // removes the key/value pair of library='angular'
+    var removeFromLocalStorage = function () {
+      var i, key;
+      for (i=0; i<arguments.length; i++) {
+        key = arguments[i];
+        if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+          if (!browserSupportsLocalStorage) {
+            $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+          }
+
+          if (notify.removeItem) {
+            $rootScope.$broadcast('LocalStorageModule.notification.removeitem', {key: key, storageType: 'cookie'});
+          }
+          removeFromCookies(key);
+        }
+        else {
+          try {
+            webStorage.removeItem(deriveQualifiedKey(key));
+            if (notify.removeItem) {
+              $rootScope.$broadcast('LocalStorageModule.notification.removeitem', {
+                key: key,
+                storageType: self.storageType
+              });
+            }
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+            removeFromCookies(key);
+          }
+        }
+      }
+    };
+
+    // Return array of keys for local storage
+    // Example use: var keys = localStorageService.keys()
+    var getKeysForLocalStorage = function () {
+
+      if (!browserSupportsLocalStorage) {
+        $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        return false;
+      }
+
+      var prefixLength = prefix.length;
+      var keys = [];
+      for (var key in webStorage) {
+        // Only return keys that are for this app
+        if (key.substr(0,prefixLength) === prefix) {
+          try {
+            keys.push(key.substr(prefixLength));
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error', e.Description);
+            return [];
+          }
+        }
+      }
+      return keys;
+    };
+
+    // Remove all data for this app from local storage
+    // Also optionally takes a regular expression string and removes the matching key-value pairs
+    // Example use: localStorageService.clearAll();
+    // Should be used mostly for development purposes
+    var clearAllFromLocalStorage = function (regularExpression) {
+
+      // Setting both regular expressions independently
+      // Empty strings result in catchall RegExp
+      var prefixRegex = !!prefix ? new RegExp('^' + prefix) : new RegExp();
+      var testRegex = !!regularExpression ? new RegExp(regularExpression) : new RegExp();
+
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+          $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+        return clearAllFromCookies();
+      }
+
+      var prefixLength = prefix.length;
+
+      for (var key in webStorage) {
+        // Only remove items that are for this app and match the regular expression
+        if (prefixRegex.test(key) && testRegex.test(key.substr(prefixLength))) {
+          try {
+            removeFromLocalStorage(key.substr(prefixLength));
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error',e.message);
+            return clearAllFromCookies();
+          }
+        }
+      }
+      return true;
+    };
+
+    // Checks the browser to see if cookies are supported
+    var browserSupportsCookies = (function() {
+      try {
+        return $window.navigator.cookieEnabled ||
+          ("cookie" in $document && ($document.cookie.length > 0 ||
+          ($document.cookie = "test").indexOf.call($document.cookie, "test") > -1));
+      } catch (e) {
+          $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+          return false;
+      }
+    }());
+
+    // Directly adds a value to cookies
+    // Typically used as a fallback is local storage is not available in the browser
+    // Example use: localStorageService.cookie.add('library','angular');
+    var addToCookies = function (key, value, daysToExpiry) {
+
+      if (isUndefined(value)) {
+        return false;
+      } else if(isArray(value) || isObject(value)) {
+        value = toJson(value);
+      }
+
+      if (!browserSupportsCookies) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', 'COOKIES_NOT_SUPPORTED');
+        return false;
+      }
+
+      try {
+        var expiry = '',
+            expiryDate = new Date(),
+            cookieDomain = '';
+
+        if (value === null) {
+          // Mark that the cookie has expired one day ago
+          expiryDate.setTime(expiryDate.getTime() + (-1 * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+          value = '';
+        } else if (isNumber(daysToExpiry) && daysToExpiry !== 0) {
+          expiryDate.setTime(expiryDate.getTime() + (daysToExpiry * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+        } else if (cookie.expiry !== 0) {
+          expiryDate.setTime(expiryDate.getTime() + (cookie.expiry * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+        }
+        if (!!key) {
+          var cookiePath = "; path=" + cookie.path;
+          if(cookie.domain){
+            cookieDomain = "; domain=" + cookie.domain;
+          }
+          $document.cookie = deriveQualifiedKey(key) + "=" + encodeURIComponent(value) + expiry + cookiePath + cookieDomain;
+        }
+      } catch (e) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error',e.message);
+        return false;
+      }
+      return true;
+    };
+
+    // Directly get a value from a cookie
+    // Example use: localStorageService.cookie.get('library'); // returns 'angular'
+    var getFromCookies = function (key) {
+      if (!browserSupportsCookies) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', 'COOKIES_NOT_SUPPORTED');
+        return false;
+      }
+
+      var cookies = $document.cookie && $document.cookie.split(';') || [];
+      for(var i=0; i < cookies.length; i++) {
+        var thisCookie = cookies[i];
+        while (thisCookie.charAt(0) === ' ') {
+          thisCookie = thisCookie.substring(1,thisCookie.length);
+        }
+        if (thisCookie.indexOf(deriveQualifiedKey(key) + '=') === 0) {
+          var storedValues = decodeURIComponent(thisCookie.substring(prefix.length + key.length + 1, thisCookie.length))
+          try {
+            return JSON.parse(storedValues);
+          } catch(e) {
+            return storedValues
+          }
+        }
+      }
+      return null;
+    };
+
+    var removeFromCookies = function (key) {
+      addToCookies(key,null);
+    };
+
+    var clearAllFromCookies = function () {
+      var thisCookie = null, thisKey = null;
+      var prefixLength = prefix.length;
+      var cookies = $document.cookie.split(';');
+      for(var i = 0; i < cookies.length; i++) {
+        thisCookie = cookies[i];
+
+        while (thisCookie.charAt(0) === ' ') {
+          thisCookie = thisCookie.substring(1, thisCookie.length);
+        }
+
+        var key = thisCookie.substring(prefixLength, thisCookie.indexOf('='));
+        removeFromCookies(key);
+      }
+    };
+
+    var getStorageType = function() {
+      return storageType;
+    };
+
+    // Add a listener on scope variable to save its changes to local storage
+    // Return a function which when called cancels binding
+    var bindToScope = function(scope, key, def, lsKey) {
+      lsKey = lsKey || key;
+      var value = getFromLocalStorage(lsKey);
+
+      if (value === null && isDefined(def)) {
+        value = def;
+      } else if (isObject(value) && isObject(def)) {
+        value = extend(def, value);
+      }
+
+      $parse(key).assign(scope, value);
+
+      return scope.$watch(key, function(newVal) {
+        addToLocalStorage(lsKey, newVal);
+      }, isObject(scope[key]));
+    };
+
+    // Return localStorageService.length
+    // ignore keys that not owned
+    var lengthOfLocalStorage = function() {
+      var count = 0;
+      var storage = $window[storageType];
+      for(var i = 0; i < storage.length; i++) {
+        if(storage.key(i).indexOf(prefix) === 0 ) {
+          count++;
+        }
+      }
+      return count;
+    };
+
+    return {
+      isSupported: browserSupportsLocalStorage,
+      getStorageType: getStorageType,
+      set: addToLocalStorage,
+      add: addToLocalStorage, //DEPRECATED
+      get: getFromLocalStorage,
+      keys: getKeysForLocalStorage,
+      remove: removeFromLocalStorage,
+      clearAll: clearAllFromLocalStorage,
+      bind: bindToScope,
+      deriveKey: deriveQualifiedKey,
+      length: lengthOfLocalStorage,
+      cookie: {
+        isSupported: browserSupportsCookies,
+        set: addToCookies,
+        add: addToCookies, //DEPRECATED
+        get: getFromCookies,
+        remove: removeFromCookies,
+        clearAll: clearAllFromCookies
+      }
+    };
+  }];
+});
+})( window, window.angular );
+},{}],9:[function(require,module,exports){
+/**
  * @license AngularJS v1.5.0
  * (c) 2010-2016 Google, Inc. http://angularjs.org
  * License: MIT
@@ -5289,11 +5733,514 @@ angular.module('ngSanitize').filter('linky', ['$sanitize', function($sanitize) {
 
 })(window, window.angular);
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 require('./angular-sanitize');
 module.exports = 'ngSanitize';
 
-},{"./angular-sanitize":8}],10:[function(require,module,exports){
+},{"./angular-sanitize":9}],11:[function(require,module,exports){
+(function() {
+  'use strict';
+
+  angular.module('toastr', [])
+    .factory('toastr', toastr);
+
+  toastr.$inject = ['$animate', '$injector', '$document', '$rootScope', '$sce', 'toastrConfig', '$q'];
+
+  function toastr($animate, $injector, $document, $rootScope, $sce, toastrConfig, $q) {
+    var container;
+    var index = 0;
+    var toasts = [];
+
+    var previousToastMessage = '';
+    var openToasts = {};
+
+    var containerDefer = $q.defer();
+
+    var toast = {
+      active: active,
+      clear: clear,
+      error: error,
+      info: info,
+      remove: remove,
+      success: success,
+      warning: warning
+    };
+
+    return toast;
+
+    /* Public API */
+    function active() {
+      return toasts.length;
+    }
+
+    function clear(toast) {
+      // Bit of a hack, I will remove this soon with a BC
+      if (arguments.length === 1 && !toast) { return; }
+
+      if (toast) {
+        remove(toast.toastId);
+      } else {
+        for (var i = 0; i < toasts.length; i++) {
+          remove(toasts[i].toastId);
+        }
+      }
+    }
+
+    function error(message, title, optionsOverride) {
+      var type = _getOptions().iconClasses.error;
+      return _buildNotification(type, message, title, optionsOverride);
+    }
+
+    function info(message, title, optionsOverride) {
+      var type = _getOptions().iconClasses.info;
+      return _buildNotification(type, message, title, optionsOverride);
+    }
+
+    function success(message, title, optionsOverride) {
+      var type = _getOptions().iconClasses.success;
+      return _buildNotification(type, message, title, optionsOverride);
+    }
+
+    function warning(message, title, optionsOverride) {
+      var type = _getOptions().iconClasses.warning;
+      return _buildNotification(type, message, title, optionsOverride);
+    }
+
+    function remove(toastId, wasClicked) {
+      var toast = findToast(toastId);
+
+      if (toast && ! toast.deleting) { // Avoid clicking when fading out
+        toast.deleting = true;
+        toast.isOpened = false;
+        $animate.leave(toast.el).then(function() {
+          if (toast.scope.options.onHidden) {
+            toast.scope.options.onHidden(!!wasClicked, toast);
+          }
+          toast.scope.$destroy();
+          var index = toasts.indexOf(toast);
+          delete openToasts[toast.scope.message];
+          toasts.splice(index, 1);
+          var maxOpened = toastrConfig.maxOpened;
+          if (maxOpened && toasts.length >= maxOpened) {
+            toasts[maxOpened - 1].open.resolve();
+          }
+          if (lastToast()) {
+            container.remove();
+            container = null;
+            containerDefer = $q.defer();
+          }
+        });
+      }
+
+      function findToast(toastId) {
+        for (var i = 0; i < toasts.length; i++) {
+          if (toasts[i].toastId === toastId) {
+            return toasts[i];
+          }
+        }
+      }
+
+      function lastToast() {
+        return !toasts.length;
+      }
+    }
+
+    /* Internal functions */
+    function _buildNotification(type, message, title, optionsOverride) {
+      if (angular.isObject(title)) {
+        optionsOverride = title;
+        title = null;
+      }
+
+      return _notify({
+        iconClass: type,
+        message: message,
+        optionsOverride: optionsOverride,
+        title: title
+      });
+    }
+
+    function _getOptions() {
+      return angular.extend({}, toastrConfig);
+    }
+
+    function _createOrGetContainer(options) {
+      if(container) { return containerDefer.promise; }
+
+      container = angular.element('<div></div>');
+      container.attr('id', options.containerId);
+      container.addClass(options.positionClass);
+      container.css({'pointer-events': 'auto'});
+
+      var target = angular.element(document.querySelector(options.target));
+
+      if ( ! target || ! target.length) {
+        throw 'Target for toasts doesn\'t exist';
+      }
+
+      $animate.enter(container, target).then(function() {
+        containerDefer.resolve();
+      });
+
+      return containerDefer.promise;
+    }
+
+    function _notify(map) {
+      var options = _getOptions();
+
+      if (shouldExit()) { return; }
+
+      var newToast = createToast();
+
+      toasts.push(newToast);
+
+      if (ifMaxOpenedAndAutoDismiss()) {
+        var oldToasts = toasts.slice(0, (toasts.length - options.maxOpened));
+        for (var i = 0, len = oldToasts.length; i < len; i++) {
+          remove(oldToasts[i].toastId);
+        }
+      }
+
+      if (maxOpenedNotReached()) {
+        newToast.open.resolve();
+      }
+
+      newToast.open.promise.then(function() {
+        _createOrGetContainer(options).then(function() {
+          newToast.isOpened = true;
+          if (options.newestOnTop) {
+            $animate.enter(newToast.el, container).then(function() {
+              newToast.scope.init();
+            });
+          } else {
+            var sibling = container[0].lastChild ? angular.element(container[0].lastChild) : null;
+            $animate.enter(newToast.el, container, sibling).then(function() {
+              newToast.scope.init();
+            });
+          }
+        });
+      });
+
+      return newToast;
+
+      function ifMaxOpenedAndAutoDismiss() {
+        return options.autoDismiss && options.maxOpened && toasts.length > options.maxOpened;
+      }
+
+      function createScope(toast, map, options) {
+        if (options.allowHtml) {
+          toast.scope.allowHtml = true;
+          toast.scope.title = $sce.trustAsHtml(map.title);
+          toast.scope.message = $sce.trustAsHtml(map.message);
+        } else {
+          toast.scope.title = map.title;
+          toast.scope.message = map.message;
+        }
+
+        toast.scope.toastType = toast.iconClass;
+        toast.scope.toastId = toast.toastId;
+        toast.scope.extraData = options.extraData;
+
+        toast.scope.options = {
+          extendedTimeOut: options.extendedTimeOut,
+          messageClass: options.messageClass,
+          onHidden: options.onHidden,
+          onShown: generateEvent('onShown'),
+          onTap: generateEvent('onTap'),
+          progressBar: options.progressBar,
+          tapToDismiss: options.tapToDismiss,
+          timeOut: options.timeOut,
+          titleClass: options.titleClass,
+          toastClass: options.toastClass
+        };
+
+        if (options.closeButton) {
+          toast.scope.options.closeHtml = options.closeHtml;
+        }
+
+        function generateEvent(event) {
+          if (options[event]) {
+            return function() {
+              options[event](toast);
+            };
+          }
+        }
+      }
+
+      function createToast() {
+        var newToast = {
+          toastId: index++,
+          isOpened: false,
+          scope: $rootScope.$new(),
+          open: $q.defer()
+        };
+        newToast.iconClass = map.iconClass;
+        if (map.optionsOverride) {
+          angular.extend(options, cleanOptionsOverride(map.optionsOverride));
+          newToast.iconClass = map.optionsOverride.iconClass || newToast.iconClass;
+        }
+
+        createScope(newToast, map, options);
+
+        newToast.el = createToastEl(newToast.scope);
+
+        return newToast;
+
+        function cleanOptionsOverride(options) {
+          var badOptions = ['containerId', 'iconClasses', 'maxOpened', 'newestOnTop',
+                            'positionClass', 'preventDuplicates', 'preventOpenDuplicates', 'templates'];
+          for (var i = 0, l = badOptions.length; i < l; i++) {
+            delete options[badOptions[i]];
+          }
+
+          return options;
+        }
+      }
+
+      function createToastEl(scope) {
+        var angularDomEl = angular.element('<div toast></div>'),
+          $compile = $injector.get('$compile');
+        return $compile(angularDomEl)(scope);
+      }
+
+      function maxOpenedNotReached() {
+        return options.maxOpened && toasts.length <= options.maxOpened || !options.maxOpened;
+      }
+
+      function shouldExit() {
+        var isDuplicateOfLast = options.preventDuplicates && map.message === previousToastMessage;
+        var isDuplicateOpen = options.preventOpenDuplicates && openToasts[map.message];
+
+        if (isDuplicateOfLast || isDuplicateOpen) {
+          return true;
+        }
+
+        previousToastMessage = map.message;
+        openToasts[map.message] = true;
+
+        return false;
+      }
+    }
+  }
+}());
+
+(function() {
+  'use strict';
+
+  angular.module('toastr')
+    .constant('toastrConfig', {
+      allowHtml: false,
+      autoDismiss: false,
+      closeButton: false,
+      closeHtml: '<button>&times;</button>',
+      containerId: 'toast-container',
+      extendedTimeOut: 1000,
+      iconClasses: {
+        error: 'toast-error',
+        info: 'toast-info',
+        success: 'toast-success',
+        warning: 'toast-warning'
+      },
+      maxOpened: 0,
+      messageClass: 'toast-message',
+      newestOnTop: true,
+      onHidden: null,
+      onShown: null,
+      onTap: null,
+      positionClass: 'toast-top-right',
+      preventDuplicates: false,
+      preventOpenDuplicates: false,
+      progressBar: false,
+      tapToDismiss: true,
+      target: 'body',
+      templates: {
+        toast: 'directives/toast/toast.html',
+        progressbar: 'directives/progressbar/progressbar.html'
+      },
+      timeOut: 5000,
+      titleClass: 'toast-title',
+      toastClass: 'toast'
+    });
+}());
+
+(function() {
+  'use strict';
+
+  angular.module('toastr')
+    .directive('progressBar', progressBar);
+
+  progressBar.$inject = ['toastrConfig'];
+
+  function progressBar(toastrConfig) {
+    return {
+      replace: true,
+      require: '^toast',
+      templateUrl: function() {
+        return toastrConfig.templates.progressbar;
+      },
+      link: linkFunction
+    };
+
+    function linkFunction(scope, element, attrs, toastCtrl) {
+      var intervalId, currentTimeOut, hideTime;
+
+      toastCtrl.progressBar = scope;
+
+      scope.start = function(duration) {
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+
+        currentTimeOut = parseFloat(duration);
+        hideTime = new Date().getTime() + currentTimeOut;
+        intervalId = setInterval(updateProgress, 10);
+      };
+
+      scope.stop = function() {
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+      };
+
+      function updateProgress() {
+        var percentage = ((hideTime - (new Date().getTime())) / currentTimeOut) * 100;
+        element.css('width', percentage + '%');
+      }
+
+      scope.$on('$destroy', function() {
+        // Failsafe stop
+        clearInterval(intervalId);
+      });
+    }
+  }
+}());
+
+(function() {
+  'use strict';
+
+  angular.module('toastr')
+    .controller('ToastController', ToastController);
+
+  function ToastController() {
+    this.progressBar = null;
+
+    this.startProgressBar = function(duration) {
+      if (this.progressBar) {
+        this.progressBar.start(duration);
+      }
+    };
+
+    this.stopProgressBar = function() {
+      if (this.progressBar) {
+        this.progressBar.stop();
+      }
+    };
+  }
+}());
+
+(function() {
+  'use strict';
+
+  angular.module('toastr')
+    .directive('toast', toast);
+
+  toast.$inject = ['$injector', '$interval', 'toastrConfig', 'toastr'];
+
+  function toast($injector, $interval, toastrConfig, toastr) {
+    return {
+      replace: true,
+      templateUrl: function() {
+        return toastrConfig.templates.toast;
+      },
+      controller: 'ToastController',
+      link: toastLinkFunction
+    };
+
+    function toastLinkFunction(scope, element, attrs, toastCtrl) {
+      var timeout;
+
+      scope.toastClass = scope.options.toastClass;
+      scope.titleClass = scope.options.titleClass;
+      scope.messageClass = scope.options.messageClass;
+      scope.progressBar = scope.options.progressBar;
+
+      if (wantsCloseButton()) {
+        var button = angular.element(scope.options.closeHtml),
+          $compile = $injector.get('$compile');
+        button.addClass('toast-close-button');
+        button.attr('ng-click', 'close(true, $event)');
+        $compile(button)(scope);
+        element.prepend(button);
+      }
+
+      scope.init = function() {
+        if (scope.options.timeOut) {
+          timeout = createTimeout(scope.options.timeOut);
+        }
+        if (scope.options.onShown) {
+          scope.options.onShown();
+        }
+      };
+
+      element.on('mouseenter', function() {
+        hideAndStopProgressBar();
+        if (timeout) {
+          $interval.cancel(timeout);
+        }
+      });
+
+      scope.tapToast = function () {
+        if (angular.isFunction(scope.options.onTap)) {
+          scope.options.onTap();
+        }
+        if (scope.options.tapToDismiss) {
+          scope.close(true);
+        }
+      };
+
+      scope.close = function (wasClicked, $event) {
+        if ($event && angular.isFunction($event.stopPropagation)) {
+          $event.stopPropagation();
+        }
+        toastr.remove(scope.toastId, wasClicked);
+      };
+
+      element.on('mouseleave', function() {
+        if (scope.options.timeOut === 0 && scope.options.extendedTimeOut === 0) { return; }
+        scope.$apply(function() {
+          scope.progressBar = scope.options.progressBar;
+        });
+        timeout = createTimeout(scope.options.extendedTimeOut);
+      });
+
+      function createTimeout(time) {
+        toastCtrl.startProgressBar(time);
+        return $interval(function() {
+          toastCtrl.stopProgressBar();
+          toastr.remove(scope.toastId);
+        }, time, 1);
+      }
+
+      function hideAndStopProgressBar() {
+        scope.progressBar = false;
+        toastCtrl.stopProgressBar();
+      }
+
+      function wantsCloseButton() {
+        return scope.options.closeHtml;
+      }
+    }
+  }
+}());
+
+angular.module("toastr").run(["$templateCache", function($templateCache) {$templateCache.put("directives/progressbar/progressbar.html","<div class=\"toast-progress\"></div>\n");
+$templateCache.put("directives/toast/toast.html","<div class=\"{{toastClass}} {{toastType}}\" ng-click=\"tapToast()\">\n  <div ng-switch on=\"allowHtml\">\n    <div ng-switch-default ng-if=\"title\" class=\"{{titleClass}}\" aria-label=\"{{title}}\">{{title}}</div>\n    <div ng-switch-default class=\"{{messageClass}}\" aria-label=\"{{message}}\">{{message}}</div>\n    <div ng-switch-when=\"true\" ng-if=\"title\" class=\"{{titleClass}}\" ng-bind-html=\"title\"></div>\n    <div ng-switch-when=\"true\" class=\"{{messageClass}}\" ng-bind-html=\"message\"></div>\n  </div>\n  <progress-bar ng-if=\"progressBar\"></progress-bar>\n</div>\n");}]);
+},{}],12:[function(require,module,exports){
+require('./dist/angular-toastr.tpls.js');
+module.exports = 'toastr';
+
+
+},{"./dist/angular-toastr.tpls.js":11}],13:[function(require,module,exports){
 /**
  * State-based routing for AngularJS
  * @version v0.2.18
@@ -9833,7 +10780,7 @@ angular.module('ui.router.state')
   .filter('isState', $IsStateFilter)
   .filter('includedByState', $IncludedByStateFilter);
 })(window, window.angular);
-},{}],11:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 /**
  * @license AngularJS v1.5.0
  * (c) 2010-2016 Google, Inc. http://angularjs.org
@@ -40262,226 +41209,8 @@ $provide.value("$locale", {
 })(window, document);
 
 !window.angular.$$csp().noInlineStyle && window.angular.element(document.head).prepend('<style type="text/css">@charset "UTF-8";[ng\\:cloak],[ng-cloak],[data-ng-cloak],[x-ng-cloak],.ng-cloak,.x-ng-cloak,.ng-hide:not(.ng-hide-animate){display:none !important;}ng\\:form{display:block;}.ng-animate-shim{visibility:hidden;}.ng-anchor{position:absolute;}</style>');
-},{}],12:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 require('./angular');
 module.exports = angular;
 
-},{"./angular":11}],13:[function(require,module,exports){
-(function (root, factory) {
-	if (typeof exports === 'object') {
-		module.exports = factory(root, require('angular'));
-	} else if (typeof define === 'function' && define.amd) {
-		define(['angular'], function (angular) {
-			return (root.ngNotificationsBar = factory(root, angular));
-		});
-	} else {
-		root.ngNotificationsBar = factory(root, root.angular);
-	}
-}(this, function (window, angular) {
-	var module = angular.module('ngNotificationsBar', []);
-
-	module.provider('notificationsConfig', function() {
-		var config = {};
-
-		function setHideDelay(value){
-			config.hideDelay = value;
-		}
-
-		function getHideDelay(){
-			return config.hideDelay;
-		}
-
-		function setAcceptHTML(value){
-			config.acceptHTML = value;
-		}
-
-		function getAcceptHTML(){
-			return config.acceptHTML;
-		}
-
-
-		function setAutoHide(value){
-			config.autoHide = value;
-		}
-		
-		function setAutoHideAnimation(value){
-			config.autoHideAnimation = value;
-		}
-		
-		function getAutoHideAnimation(){
-			return config.autoHideAnimation;
-		}
-		
-		function setAutoHideAnimationDelay(value){
-			config.autoHideAnimationDelay = value;
-		}
-		
-		function getAutoHideAnimationDelay(){
-			return config.autoHideAnimationDelay;
-		}
-
-		function getAutoHide(){
-			return config.autoHide;
-		}
-
-		return {
-			setHideDelay: setHideDelay,
-
-			setAutoHide: setAutoHide,
-			
-			setAutoHideAnimation: setAutoHideAnimation,
-			
-			setAutoHideAnimationDelay: setAutoHideAnimationDelay,
-
-			setAcceptHTML: setAcceptHTML,
-
-			$get: function(){
-				return {
-					getHideDelay: getHideDelay,
-
-					getAutoHide: getAutoHide,
-					
-					getAutoHideAnimation: getAutoHideAnimation,
-					
-					getAutoHideAnimationDelay: getAutoHideAnimationDelay,
-
-					getAcceptHTML: getAcceptHTML
-				};
-			}
-		};
-	});
-
-	module.factory('notifications', ['$rootScope', function ($rootScope) {
-		var showError = function (message) {
-			$rootScope.$broadcast('notifications:error', message);
-		};
-
-		var showWarning = function (message) {
-			$rootScope.$broadcast('notifications:warning', message);
-		};
-		
-		var showInfo = function (message) {
-			$rootScope.$broadcast('notifications:info', message);
-		};
-
-		var showSuccess = function (message) {
-			$rootScope.$broadcast('notifications:success', message);
-		};
-
-		var closeAll = function () {
-			$rootScope.$broadcast('notifications:closeAll');
-		};
-
-		return {
-			showError: showError,
-			showInfo: showInfo,
-			showWarning: showWarning,
-			showSuccess: showSuccess,
-			closeAll: closeAll
-		};
-	}]);
-
-	module.directive('notificationsBar', ['notificationsConfig', '$timeout', function (notificationsConfig, $timeout) {
-		return {
-			restrict: 'EA',
-			template: function(elem, attr){
-				var acceptHTML = notificationsConfig.getAcceptHTML() || false;
-				var iconClasses = attr.closeicon || 'glyphicon glyphicon-remove';
-				return acceptHTML ? '\
-					<div class="notifications-container" ng-if="notifications.length">\
-						<div class="{{note.type}}" ng-repeat="note in notifications" ng-class="note.animation">\
-							<span class="message" ng-bind-html="note.message"></span>\
-							<span class="' + iconClasses + ' close-click" ng-click="close($index)"></span>\
-						</div>\
-					</div>\
-				' : '\
-					<div class="notifications-container" ng-if="notifications.length">\
-						<div class="{{note.type}}" ng-repeat="note in notifications" ng-class="note.animation">\
-							<span class="message" >{{note.message}}</span>\
-							<span class="' + iconClasses + ' close-click" ng-click="close($index)"></span>\
-						</div>\
-					</div>\
-				'
-
-			},
-			link: function (scope) {
-				var notifications = scope.notifications = [];
-				var timers = [];
-				var autoHideDelay = notificationsConfig.getHideDelay() || 3000;
-				var autoHide = notificationsConfig.getAutoHide() || false;
-				var autoHideAnimation = notificationsConfig.getAutoHideAnimation() || '';
-				var autoHideAnimationDelay = notificationsConfig.getAutoHideAnimationDelay() || 1200;
-
-				var removeById = function (id) {
-					var found = -1;
-
-					notifications.forEach(function (el, index) {
-						if (el.id === id) {
-							found = index;
-							
-							el.animation = {};
-							el.animation[autoHideAnimation] = true;
-							
-							scope.$apply();
-						}
-					});
-
-					if (found >= 0) {
-						$timeout(function(){
-							notifications.splice(found, 1);
-						}, autoHideAnimationDelay);
-					}
-				};
-
-				var notificationHandler = function (event, data, type, animation) {
-					var message, hide = autoHide, hideDelay = autoHideDelay;
-
-					if (typeof data === 'object') {
-						message = data.message;
-						hide = (typeof data.hide === 'undefined') ? autoHide : !!data.hide;
-						hideDelay = data.hideDelay || hideDelay;
-					} else {
-						message = data;
-					}
-
-					var id = 'notif_' + (new Date()).getTime();
-					notifications.push({id: id, type: type, message: message, animation: animation});
-					if (hide) {
-						var timer = $timeout(function () {
-							removeById(id);
-							$timeout.cancel(timer);
-						}, hideDelay);
-					}
-				};
-
-				scope.$on('notifications:error', function (event, data) {
-					notificationHandler(event, data, 'error');
-				});
-
-				scope.$on('notifications:warning', function (event, data) {
-					notificationHandler(event, data, 'warning');
-				});
-				
-				scope.$on('notifications:info', function (event, data) {
-					notificationHandler(event, data, 'info');
-				});
-
-				scope.$on('notifications:success', function (event, data) {
-					notificationHandler(event, data, 'success');
-				});
-
-				scope.$on('notifications:closeAll', function () {
-					notifications.length = 0;
-				})
-
-				scope.close = function (index) {
-					notifications.splice(index, 1);
-				};
-			}
-		};
-	}]);
-
-	return module;
-}));
-
-},{"angular":12}]},{},[1]);
+},{"./angular":14}]},{},[1]);
